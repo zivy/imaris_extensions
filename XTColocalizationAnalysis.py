@@ -344,11 +344,6 @@ class ColocalizationAnalysisDialog(ieb.ImarisExtensionBase):
         layout.addWidget(QLabel("Preset mask expressions:"))
         self.a_channel_preset_mask_combo = QComboBox()
         self.a_channel_preset_mask_combo.addItems(self.__preset_mask_expressions.keys())
-        self.a_channel_preset_mask_combo.currentTextChanged.connect(
-            lambda s: self.__preset_mask_expression_changed(
-                self.a_channel_expression_text_edit, s
-            )
-        )
         # Add the combobox text strings as tooltips too. Some of them are too long
         # to fully appear in the combobox.
         for i, k in enumerate(self.__preset_mask_expressions.keys()):
@@ -359,6 +354,11 @@ class ColocalizationAnalysisDialog(ieb.ImarisExtensionBase):
         self.a_channel_expression_text_edit = QTextEdit()
         channel_a_layout.addWidget(self.a_channel_expression_text_edit)
         colocalization_layout.addWidget(channel_a_groupbox)
+        self.a_channel_preset_mask_combo.currentTextChanged.connect(
+            lambda s: self.__preset_mask_expression_changed(
+                self.a_channel_expression_text_edit, s
+            )
+        )
 
         channel_b_groupbox = QGroupBox("Channel B")
         channel_b_layout = QVBoxLayout()
@@ -371,11 +371,6 @@ class ColocalizationAnalysisDialog(ieb.ImarisExtensionBase):
         layout.addWidget(QLabel("Preset mask expressions:"))
         self.b_channel_preset_mask_combo = QComboBox()
         self.b_channel_preset_mask_combo.addItems(self.__preset_mask_expressions.keys())
-        self.b_channel_preset_mask_combo.currentTextChanged.connect(
-            lambda s: self.__preset_mask_expression_changed(
-                self.b_channel_expression_text_edit, s
-            )
-        )
         # Add the combobox text strings as tooltips too. Some of them are too long
         # to fully appear in the combobox.
         for i, k in enumerate(self.__preset_mask_expressions.keys()):
@@ -386,6 +381,11 @@ class ColocalizationAnalysisDialog(ieb.ImarisExtensionBase):
         self.b_channel_expression_text_edit = QTextEdit()
         channel_b_layout.addWidget(self.b_channel_expression_text_edit)
         colocalization_layout.addWidget(channel_b_groupbox)
+        self.b_channel_preset_mask_combo.currentTextChanged.connect(
+            lambda s: self.__preset_mask_expression_changed(
+                self.b_channel_expression_text_edit, s
+            )
+        )
 
         roi_channel_groupbox = QGroupBox("ROI channel")
         roi_channel_layout = QVBoxLayout()
@@ -400,11 +400,6 @@ class ColocalizationAnalysisDialog(ieb.ImarisExtensionBase):
         self.roi_channel_preset_mask_combo.addItems(
             self.__preset_mask_expressions.keys()
         )
-        self.roi_channel_preset_mask_combo.currentTextChanged.connect(
-            lambda s: self.__preset_mask_expression_changed(
-                self.roi_channel_expression_text_edit, s
-            )
-        )
         # Add the combobox text strings as tooltips too. Some of them are too long
         # to fully appear in the combobox.
         for i, k in enumerate(self.__preset_mask_expressions.keys()):
@@ -415,6 +410,11 @@ class ColocalizationAnalysisDialog(ieb.ImarisExtensionBase):
         self.roi_channel_expression_text_edit = QTextEdit()
         roi_channel_layout.addWidget(self.roi_channel_expression_text_edit)
         colocalization_layout.addWidget(roi_channel_groupbox)
+        self.roi_channel_preset_mask_combo.currentTextChanged.connect(
+            lambda s: self.__preset_mask_expression_changed(
+                self.roi_channel_expression_text_edit, s
+            )
+        )
 
         layout = QHBoxLayout()
         layout.addWidget(QLabel("Output directory:"))
@@ -849,9 +849,23 @@ class ColocalizationCalculator(QRunnable):
                     )
                 ]
                 if info[1].strip():
+                    # the original image is first cast to float before applying the expression and then
+                    # the resulting binary image is cast back to the original pixel type.
+                    # the need for casting to float is due to python conversion issues. if the SimpleITK
+                    # image is unsigned int and it is compared to a negative value the result is True because
+                    # Python automatically converts the signed int to unsigned
+                    # For example:
+                    # image= sitk.Image([2,2], sitk.sitkUInt8) # all zeros image
+                    # mask = image < -100
+                    # The mask will be all ones even though 0>-100.
                     image_roi[key].append(
                         sitk.Cast(
-                            eval(info[1].replace("[i]", f"image_roi['{key}'][0]")),
+                            eval(
+                                info[1].replace(
+                                    "[i]",
+                                    f"sitk.Cast(image_roi['{key}'][0], sitk.sitkFloat32)",
+                                )
+                            ),
                             meta_data["sitk_pixel_type"],
                         )
                     )
@@ -883,6 +897,22 @@ class ColocalizationCalculator(QRunnable):
             arr_c_a_c_b_roi = sitk.GetArrayViewFromImage(sitk_c_a_c_b_roi)
             arr_roi_focus_roi = sitk.GetArrayViewFromImage(image_roi["roi_focus"][1])
             arr_focused_colocalized = arr_c_a_c_b_roi * arr_roi_focus_roi
+
+            # Ensure that none of the masks is empty. If any of them is, then there is no colocalization which indicates
+            # an error on the part of the user (given that they expect the expressions to define colocalized regions).
+            error_message = ""
+            if (arr_c_a_roi == 0).all():
+                error_message += f"Mask expression ({self.roi_a_expression}) for channel A yielded an empty ROI"
+            if (arr_c_b_roi == 0).all():
+                if error_message:
+                    error_message += " "
+                error_message += f"Mask expression ({self.roi_b_expression}) for channel B yielded an empty ROI"
+            if (arr_roi_focus_roi == 0).all():
+                if error_message:
+                    error_message += " "
+                error_message += f"Mask expression ({self.roi_focus_expression}) for ROI channel yielded an empty ROI"
+            if error_message:
+                raise ValueError(f"{message_fname}: {error_message}")
 
             # Compute colocalization characteristics
             n_colocalized = np.sum(arr_c_a_c_b_roi)
