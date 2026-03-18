@@ -74,11 +74,11 @@ Avoid converting files into imaris format using a network or external drive, thi
 ## Setup
 
 1. Install a Python version.
-The specific Python version you need depends on your version of Imaris (for us this is Python 3.7.0). Running the extensions as independent programs is less restrictive, requiring the use of Python version 3.6 or above.[[Miniconda download](https://docs.conda.io/en/latest/miniconda.html)].
+The specific Python version you need depends on your version of Imaris (for us this is Python 3.7.0). Running the extensions as independent programs is less restrictive, requiring the use of Python version 3.6 or above.[[miniforge download](https://github.com/conda-forge/miniforge)].
 2. Configure and install the required Python packages.
 
-  * **On Windows**: open the Anaconda Prompt (found under the Anaconda3 start menu).
-  * **On Linux/OSX**: on the command line ```source path_to_your_anaconda3/bin/activate base```
+  * **On Windows**: open the Miniforge Prompt (found under the start menu).
+  * **On Linux/OSX**: on the command line ```source path_to_your_miniforge3/bin/activate```
 ```
   cd path_to_your_extensions_directory
   conda env create -f environment.yml
